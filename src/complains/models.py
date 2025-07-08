@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from src.database import Base
 from src.utils.external_services import ExternalServiceClient
+from src.logger import logger
 
 
 class Complaint(Base):
@@ -25,6 +26,8 @@ class Complaint(Base):
             sentiment = external_services.analyze_sentiment(text)
 
         except Exception as e:
+            logger.info(f"Error on create complain: error {e}")
+
             sentiment = "unknown"
             country = "unknown"
             category = "unknown"

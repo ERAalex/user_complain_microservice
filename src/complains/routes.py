@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from .schemas import ComplaintCreate, ComplaintResponse
 from .models import Complaint
 from src.database import get_db
+from src.logger import logger
 
 
 router = APIRouter()
@@ -18,8 +19,12 @@ def create_complaint(complaint_in: ComplaintCreate,
     try:
         client_ip = request.client.host
         complaint = Complaint.create(db, complaint_in.text, client_ip)
+
+        logger.info(f"New complain created {complaint.id}")
         return complaint
+
     except Exception as e:
+        logger.info(f"Error on creation of complain: {complaint.id}, error {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -36,9 +41,12 @@ def close_complaint(
         complaint.status = "closed"
         db.commit()
         db.refresh(complaint)
+        logger.info(f"Complain {complaint.id} closed")
+
         return complaint
     except Exception as e:
         db.rollback()
+        logger.info(f"Error on close complain: {complaint.id}, error {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -48,7 +56,7 @@ def list_complaints(db: Session = Depends(get_db)):
         complaints = db.query(Complaint).all()
         return complaints
     except Exception as e:
-        print(f"[DB Error] {e}")
+        logger.info(f"Error on getting complains: error {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -64,5 +72,5 @@ def list_recent_open_complaints(db: Session = Depends(get_db)):
         )
         return complaints
     except Exception as e:
-        print(f"[DB Error] {e}")
+        logger.info(f"Error on getting complains: error {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
