@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 from datetime import datetime, timedelta
 
@@ -8,69 +9,72 @@ from .models import Complaint
 from src.database import get_db
 from src.logger import logger
 
-
 router = APIRouter()
 
 
 @router.post("/", response_model=ComplaintResponse)
-def create_complaint(complaint_in: ComplaintCreate,
-                     request: Request,
-                     db: Session = Depends(get_db),):
+async def create_complaint(
+    complaint_in: ComplaintCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     try:
         client_ip = request.client.host
-        complaint = Complaint.create(db, complaint_in.text, client_ip)
+        complaint = await Complaint.create(db, complaint_in.text, client_ip)
 
-        logger.info(f"New complain created {complaint.id}")
+        logger.info(f"New complaint created {complaint.id}")
         return complaint
-
     except Exception as e:
-        logger.info(f"Error on creation of complain: {complaint.id}, error {e}")
+        print(e)
+        logger.error(f"Error on creation of complaint, error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch("/close/{id}", response_model=ComplaintResponse)
-def close_complaint(
-    id: int = Path(..., description="ID complain to close"),
-    db: Session = Depends(get_db),
+async def close_complaint(
+    id: int = Path(..., description="ID complaint to close"),
+    db: AsyncSession = Depends(get_db),
 ):
-    complaint = db.query(Complaint).filter(Complaint.id == id).first()
+    result = await db.execute(select(Complaint).filter(Complaint.id == id))
+    complaint = result.scalars().first()
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
     try:
         complaint.status = "closed"
-        db.commit()
-        db.refresh(complaint)
-        logger.info(f"Complain {complaint.id} closed")
-
+        await db.commit()
+        await db.refresh(complaint)
+        logger.info(f"Complaint {complaint.id} closed")
         return complaint
     except Exception as e:
-        db.rollback()
-        logger.info(f"Error on close complain: {complaint.id}, error {e}")
+        await db.rollback()
+        logger.error(f"Error on closing complaint {complaint.id}, error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/", response_model=List[ComplaintResponse])
-def list_complaints(db: Session = Depends(get_db)):
+async def list_complaints(db: AsyncSession = Depends(get_db)):
     try:
-        complaints = db.query(Complaint).all()
+        result = await db.execute(select(Complaint))
+        complaints = result.scalars().all()
         return complaints
     except Exception as e:
-        logger.info(f"Error on getting complains: error {e}")
+        logger.error(f"Error on getting complaints, error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/recent", response_model=List[ComplaintResponse])
-def list_recent_open_complaints(db: Session = Depends(get_db)):
+async def list_recent_open_complaints(db: AsyncSession = Depends(get_db)):
     try:
         one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-        complaints = (
-            db.query(Complaint)
+        stmt = (
+            select(Complaint)
             .filter(Complaint.status == "open")
             .filter(Complaint.timestamp >= one_hour_ago)
-            .all()
         )
+        result = await db.execute(stmt)
+        complaints = result.scalars().all()
         return complaints
     except Exception as e:
-        logger.info(f"Error on getting complains: error {e}")
+        logger.error(f"Error on getting recent complaints, error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

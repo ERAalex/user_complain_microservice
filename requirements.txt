@@ -1,8 +1,14 @@
 fastapi
 uvicorn
-sqlalchemy
+
+sqlalchemy>=2.0 # async use
+aiosqlite
+greenlet
+
 pydantic
 python-dotenv
 alembic
 requests
 openai
+
+httpx # async
